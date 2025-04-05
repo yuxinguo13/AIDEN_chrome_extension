@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import ResponseModal from '../src/popup/components/ResponseModal';
+import ResponseModal from './popup/components/ResponseModal';
 
 // Create a root element for React injection
 const reactRoot = document.createElement('div');
