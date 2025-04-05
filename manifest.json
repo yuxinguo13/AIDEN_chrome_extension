@@ -1,42 +1,50 @@
 {
   "manifest_version": 3,
-  "name": "AIDEN Assistant (React)",
-  "version": "1.0",
-  "description": "React-based extension for integrating AIDEN with Piazza",
+  "name": "AIDEN Assistant",
+  "version": "1.0.1",
+  "description": "AI-powered assistant for Piazza integration",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "icons": {
-    "48": "public/icons/AIDEN_Small.png",
-    "128": "public/icons/AIDEN_Large.png"
+    "48": "icons/AIDEN_Small.png",
+    "128": "icons/AIDEN_Large.png"
   },
   "permissions": [
     "cookies",
     "storage",
     "activeTab",
     "scripting",
-    "webRequest"
+    "webRequest",
+    "tabs"
   ],
   "host_permissions": [
     "https://piazza.com/*",
     "http://localhost:3000/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["https://piazza.com/class/*"],
       "js": ["content.js"],
-      "css": ["src/popup/styles/inject.css"]
+      "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": [{
-    "resources": ["src/popup/styles/inject.css"],
-    "matches": ["https://piazza.com/*"]
-  }],
-  "action": {
-    "default_popup": "src/popup/index.html",
-    "default_icon": {
-      "48": "public/icons/AIDEN_Small.png",
-      "128": "public/icons/AIDEN_Large.png"
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*"],
+      "matches": ["https://piazza.com/*"]
     }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icons/AIDEN_Small.png",
+      "128": "icons/AIDEN_Large.png"
+    },
+    "default_title": "AIDEN Assistant"
   }
 }

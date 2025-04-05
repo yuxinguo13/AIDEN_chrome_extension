@@ -3,7 +3,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-  mode: 'development',
+  mode: 'production',
   entry: {
     popup: path.join(__dirname, "src/popup/main.jsx"),
     content: path.join(__dirname, "src/content.js"),
@@ -11,7 +11,8 @@ module.exports = {
   },
   output: {
     path: path.join(__dirname, "dist"),
-    filename: "[name].js"
+    filename: "[name].js",
+    clean: true
   },
   module: {
     rules: [
@@ -21,7 +22,13 @@ module.exports = {
         use: {
           loader: "babel-loader",
           options: {
-            presets: ["@babel/preset-env", "@babel/preset-react"]
+            presets: [
+              "@babel/preset-env",
+              ["@babel/preset-react", {"runtime": "automatic"}]
+            ],
+            plugins: [
+              "@babel/plugin-transform-runtime"
+            ]
           }
         }
       },
@@ -43,8 +50,14 @@ module.exports = {
     }),
     new CopyWebpackPlugin({
       patterns: [
-        { from: "public", to: "." },
-        { from: "manifest.json", to: "." }
+        {
+          from: "manifest.json",
+          to: "."
+        },
+        { 
+          from: "public/icons",
+          to: "icons"
+        }
       ]
     })
   ]
