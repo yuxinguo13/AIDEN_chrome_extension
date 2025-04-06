@@ -1,7 +1,7 @@
 {
   "name": "aiden-extension",
   "version": "1.0.1",
-  "description": "Chrome extension for AIDEN Piazza integration",
+  "description": "Chrome extension for AIDEN and Piazza integration",
   "main": "background.js",
   "scripts": {
     "dev": "webpack --mode development --watch",
@@ -12,10 +12,9 @@
   "keywords": [
     "chrome-extension",
     "piazza",
-    "aiden",
-    "react"
+    "aiden"
   ],
-  "author": "Your Name",
+  "author": "Emily Guo",
   "license": "ISC",
   "devDependencies": {
     "@babel/core": "^7.22.0",

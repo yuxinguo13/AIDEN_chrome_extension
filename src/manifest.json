@@ -26,16 +26,15 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://piazza.com/class/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "content_scripts": [{
+    "matches": ["*://*.piazza.com/*"],
+    "js": ["content.js"],
+    "run_at": "document_end",
+    "all_frames": true
+  }],
   "web_accessible_resources": [
     {
-      "resources": ["icons/*"],
+      "resources": ["icons/*", "popup.html", "popup.js", "content.js"],
       "matches": ["https://piazza.com/*"]
     }
   ],

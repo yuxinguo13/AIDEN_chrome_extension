@@ -7,7 +7,7 @@ module.exports = {
   entry: {
     popup: path.join(__dirname, "src/popup/main.jsx"),
     content: path.join(__dirname, "src/content.js"),
-    background: path.join(__dirname, "background.js")
+    background: path.join(__dirname, "src/background.js")  // Fixed path
   },
   output: {
     path: path.join(__dirname, "dist"),
@@ -46,17 +46,22 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: path.join(__dirname, "src/popup/index.html"),
       filename: "popup.html",
-      chunks: ["popup"]
+      chunks: ["popup"],
+      inject: 'body'
     }),
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: "manifest.json",
+          from: "src/manifest.json",  // Fixed path
           to: "."
         },
         { 
-          from: "public/icons",
+          from: "src/public/icons",  // Fixed path
           to: "icons"
+        },
+        {
+          from: "src/popup/styles/inject.css",  // Added CSS file
+          to: "inject.css"
         }
       ]
     })

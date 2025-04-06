@@ -7,21 +7,34 @@ function App() {
   const [questionData, setQuestionData] = useState(null);
   const [cookieStatus, setCookieStatus] = useState('checking');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null); // Add missing error state
 
   useEffect(() => {
-    // Get current tab info
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      const currentTab = tabs[0];
-      if (currentTab.url.includes('piazza.com/class')) {
-        chrome.tabs.sendMessage(
-          currentTab.id, 
-          {action: "getQuestionData"}, 
-          (response) => setQuestionData(response)
-        );
+    const checkPage = async () => {
+      try {
+        const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+        
+        if (tab.url.includes('piazza.com/class')) {
+          const response = await chrome.tabs.sendMessage(
+            tab.id, 
+            {action: "getQuestionData"}
+          );
+          
+          if (response?.postId) {
+            setQuestionData(response);
+          } else {
+            setError('Could not extract question data from this page');
+          }
+        } else {
+          setError('Please open a Piazza question page');
+        }
+      } catch (err) {
+        setError('Error communicating with content script');
+        console.error(err);
       }
-    });
+    };
 
-    // Check cookie status
+    checkPage();
     checkCookies();
   }, []);
 
@@ -67,7 +80,14 @@ function App() {
     <div className="app-container">
       <h1>AIDEN Assistant</h1>
       
-      {questionData ? (
+      {error ? (
+        <div className="error-message">
+          {error}
+          {questionData && <div className="hidden-data" style={{display: 'none'}}>
+            {JSON.stringify(questionData)}
+          </div>}
+        </div>
+      ) : questionData ? (
         <QuestionInfo 
           data={questionData} 
           onGetResponse={handleGetResponse}
