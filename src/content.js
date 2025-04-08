@@ -1,7 +1,3 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import ResponseModal from './popup/components/ResponseModal';
-
 // Constants
 const OBSERVER_CONFIG = {
   childList: true,
@@ -10,11 +6,7 @@ const OBSERVER_CONFIG = {
   characterData: false
 };
 
-// Create a root element for React injection
-const reactRoot = document.createElement('div');
-reactRoot.id = 'aiden-react-root';
-reactRoot.style.display = 'none'; // Hide until needed
-document.body.appendChild(reactRoot);
+const BACKEND_URL = 'http://localhost:3000';
 
 console.log('[AIDEN] Content script successfully injected into:', window.location.href);
 console.log('[AIDEN] Document readyState:', document.readyState);
@@ -90,6 +82,51 @@ function extractQuestionData() {
   }
 }
 
+function showLoadingState(button) {
+  button.disabled = true;
+  button.innerHTML = '<i class="icon-spinner icon-spin"></i> Processing...';
+  return button;
+}
+
+function updateButtonState(button, state) {
+  if (state === 'waiting') {
+    button.innerHTML = '<i class="icon-time"></i> Waiting for response...';
+  } else if (state === 'ready') {
+    button.disabled = false;
+    button.innerHTML = '<i class="icon-bolt"></i> Get AIDEN Response';
+  } else if (state === 'error') {
+    button.disabled = false;
+    button.innerHTML = '<i class="icon-warning-sign"></i> Error - Try Again';
+  }
+  return button;
+}
+
+async function checkResponseStatus(postId, maxAttempts = 20, delay = 3000) {
+  let attempts = 0;
+  
+  while (attempts < maxAttempts) {
+    try {
+      const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+      const data = await response.json();
+      
+      if (response.status === 200 && data.status !== 'processing') {
+        return data;
+      }
+      
+      // If still processing, wait and try again
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempts++;
+    } catch (error) {
+      console.error('[AIDEN] Error checking response status:', error);
+      attempts++;
+      // Wait a bit longer on error
+      await new Promise(resolve => setTimeout(resolve, delay * 2));
+    }
+  }
+  
+  throw new Error('Timed out waiting for AIDEN response');
+}
+
 function addAidenButton(container) {
   // Find the container if not provided
   const controls = container || document.querySelector('.post-actions, .post_action_bar, .action-bar');
@@ -115,92 +152,108 @@ function addAidenButton(container) {
   button.style.cursor = 'pointer';
   
   button.addEventListener('click', async () => {
-    button.disabled = true;
-    button.innerHTML = '<i class="icon-spinner icon-spin"></i> Processing...';
-    
     try {
+      // Get question data
       const questionData = extractQuestionData();
       if (!questionData) {
         throw new Error('Could not extract question data');
       }
-
-      const response = await chrome.runtime.sendMessage({
-        action: "sendToAiden",
-        data: {
-          type: 'piazza_question',
+      
+      // Show loading state
+      showLoadingState(button);
+      
+      // Start the request
+      const response = await fetch(`${BACKEND_URL}/generate_response`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Extension-Version': chrome.runtime.getManifest().version
+        },
+        body: JSON.stringify({
           post_id: questionData.postId,
           llm_input: `Title: ${questionData.title}\nTags: ${questionData.tags.join(', ')}\nContent: ${questionData.content}`,
           metadata: {
             tags: questionData.tags,
             url: questionData.url
           }
-        }
+        })
       });
-
-      if (response.error) {
-        throw new Error(response.error);
-      }
-
-      displayAidenResponse(response);
+      
+      // Parse the initial response
+      const initialData = await response.json();
+      
+      // Show waiting state
+      updateButtonState(button, 'waiting');
+      
+      // Poll for results
+      const aidenResponse = await checkResponseStatus(questionData.postId);
+      
+      // Update button to normal state
+      updateButtonState(button, 'ready');
+      
+      // Insert response to instructor answer
+      insertAidenToInstructorAnswer(aidenResponse);
     } catch (error) {
-      console.error('AIDEN Error:', error);
+      console.error('[AIDEN] Error:', error);
       alert(`AIDEN Error: ${error.message}`);
-    } finally {
-      button.disabled = false;
-      button.innerHTML = '<i class="icon-bolt"></i> Get AIDEN Response';
+      
+      // Reset button to error state
+      updateButtonState(button, 'error');
     }
   });
   
   controls.appendChild(button);
 }
 
-function displayAidenResponse(response) {
-  const root = createRoot(document.getElementById('aiden-react-root'));
-  reactRoot.style.display = 'block';
-  
-  root.render(
-    <React.StrictMode>
-      <ResponseModal 
-        response={response} 
-        onClose={() => {
-          root.unmount();
-          reactRoot.style.display = 'none';
-        }}
-        onSubmit={async (content) => {
-          try {
-            const { cookies } = await chrome.runtime.sendMessage({
-              action: "getCookies"
-            });
-            
-            if (cookies) {
-              await submitToPiazza(content, cookies);
-              root.unmount();
-              reactRoot.style.display = 'none';
-            } else {
-              throw new Error('Failed to get authentication cookies');
-            }
-          } catch (error) {
-            console.error('Submission error:', error);
-            alert(`Submission failed: ${error.message}`);
-          }
-        }}
-      />
-    </React.StrictMode>
-  );
-}
-
-async function submitToPiazza(content, cookies) {
+function insertAidenToInstructorAnswer(response) {
   try {
-    // Implementation would depend on Piazza's current API
-    console.log('Submitting to Piazza with content:', content);
-    // Here you would make the actual API call to Piazza
-    // For example:
-    // const response = await fetch(...);
-    // if (!response.ok) throw new Error('Submission failed');
-    return true;
+    console.log('[AIDEN] Inserting response to instructor answer section');
+    
+    // Find the instructor answer textarea
+    const instructorTextarea = document.querySelector('textarea#i_answer_edit');
+    
+    if (!instructorTextarea) {
+      console.error('[AIDEN] Could not find instructor answer textarea');
+      alert('Could not find instructor answer section. Please make sure you are on a question page and have instructor privileges.');
+      return;
+    }
+    
+    // Get the existing content
+    let existingContent = instructorTextarea.value || '';
+    
+    // Get the AIDEN response - handle both direct output and nested format
+    let aidenResponse = '';
+    if (response.output) {
+      aidenResponse = response.output;
+    } else if (response.full_response && response.full_response.output) {
+      aidenResponse = response.full_response.output;
+    } else {
+      aidenResponse = "Error: Could not retrieve AIDEN response";
+    }
+    
+    // Format the response
+    const formattedResponse = existingContent.trim() ? 
+      existingContent + '\n\n' + aidenResponse :
+      aidenResponse;
+    
+    // Set the new content
+    instructorTextarea.value = formattedResponse;
+    
+    // Trigger an input event to ensure Piazza recognizes the change
+    const inputEvent = new Event('input', { bubbles: true });
+    instructorTextarea.dispatchEvent(inputEvent);
+    
+    // Focus on the textarea
+    instructorTextarea.focus();
+    
+    // Scroll to the textarea
+    instructorTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Show success message
+    alert('AIDEN response has been inserted into the instructor answer section.');
   } catch (error) {
-    console.error('Piazza submission error:', error);
-    throw error;
+    console.error('[AIDEN] Error inserting response:', error);
+    alert(`Error inserting AIDEN response: ${error.message}`);
   }
 }
 
@@ -213,10 +266,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.action === "displayResponse") {
-    displayAidenResponse(request.response);
+    insertAidenToInstructorAnswer(request.response);
     sendResponse({success: true});
     return true;
   }
+  
+  return false;
 });
 
 // MutationObserver to handle dynamic content loading
@@ -266,6 +321,4 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 // Cleanup on page navigation (for SPA)
 window.addEventListener('beforeunload', () => {
   observer.disconnect();
-  const root = document.getElementById('aiden-react-root');
-  if (root) root.style.display = 'none';
 });

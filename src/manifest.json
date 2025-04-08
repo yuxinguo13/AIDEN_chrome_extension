@@ -14,27 +14,24 @@
     "cookies",
     "storage",
     "activeTab",
-    "scripting",
-    "webRequest",
-    "tabs"
+    "scripting"
   ],
   "host_permissions": [
     "https://piazza.com/*",
     "http://localhost:3000/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "content_scripts": [{
     "matches": ["*://*.piazza.com/*"],
     "js": ["content.js"],
-    "run_at": "document_end",
-    "all_frames": true
+    "css": ["inject.css"],
+    "run_at": "document_end"
   }],
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "popup.html", "popup.js", "content.js"],
+      "resources": ["icons/*", "popup.html", "inject.css"],
       "matches": ["https://piazza.com/*"]
     }
   ],

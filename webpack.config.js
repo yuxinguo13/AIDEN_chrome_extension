@@ -7,7 +7,7 @@ module.exports = {
   entry: {
     popup: path.join(__dirname, "src/popup/main.jsx"),
     content: path.join(__dirname, "src/content.js"),
-    background: path.join(__dirname, "src/background.js")  // Fixed path
+    background: path.join(__dirname, "src/background.js")
   },
   output: {
     path: path.join(__dirname, "dist"),
@@ -52,18 +52,20 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: "src/manifest.json",  // Fixed path
+          from: "src/manifest.json",
           to: "."
         },
         { 
-          from: "src/public/icons",  // Fixed path
+          from: "src/public/icons",
           to: "icons"
         },
         {
-          from: "src/popup/styles/inject.css",  // Added CSS file
+          from: "src/popup/styles/inject.css", 
           to: "inject.css"
         }
       ]
     })
-  ]
+  ],
+  // Add this to fix source mapping
+  devtool: 'cheap-module-source-map'
 };
