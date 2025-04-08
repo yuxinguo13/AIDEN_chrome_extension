@@ -9,6 +9,7 @@ function App() {
   const [cookieStatus, setCookieStatus] = useState('checking');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [aidenStatus, setAidenStatus] = useState('idle'); // 'idle', 'requesting', 'thinking', 'ready'
 
   useEffect(() => {
     const checkPage = async () => {
@@ -23,6 +24,7 @@ function App() {
           
           if (response?.postId) {
             setQuestionData(response);
+            checkAidenStatus(response.postId);
           } else {
             setError('Could not extract question data from this page');
           }
@@ -37,7 +39,29 @@ function App() {
 
     checkPage();
     checkCookies();
+
+    // Set up listener for status updates from content script or background
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.action === "aidenStatusUpdate") {
+        setAidenStatus(message.status);
+      }
+    });
   }, []);
+
+  const checkAidenStatus = async (postId) => {
+    try {
+      const response = await fetch(`http://localhost:3000/get_response/${postId}`);
+      const data = await response.json();
+      
+      if (data.status === 'processing') {
+        setAidenStatus('thinking');
+      } else if (response.status === 200 && !data.error) {
+        setAidenStatus('ready');
+      }
+    } catch (error) {
+      console.log('Status check error or request not started yet');
+    }
+  };
 
   const checkCookies = () => {
     setCookieStatus('checking');
@@ -46,8 +70,27 @@ function App() {
     });
   };
 
+  const handleTriggerAiden = () => {
+    setIsLoading(true);
+    setAidenStatus('requesting');
+    
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      const currentTab = tabs[0];
+      chrome.tabs.sendMessage(currentTab.id, {
+        action: "triggerAidenRequest"
+      }, (response) => {
+        setIsLoading(false);
+        if (response?.error) {
+          setError(`Error: ${response.error}`);
+        }
+      });
+    });
+  };
+
   const handleGetResponse = (editedContent) => {
     setIsLoading(true);
+    setAidenStatus('requesting');
+    
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
       const currentTab = tabs[0];
       chrome.runtime.sendMessage({
@@ -64,13 +107,9 @@ function App() {
       }, (response) => {
         setIsLoading(false);
         if (response.error) {
-          alert(`Error: ${response.error}`);
-        } else {
-          chrome.tabs.sendMessage(currentTab.id, {
-            action: "displayResponse",
-            response: response
-          });
-          window.close(); // Close the popup after sending the response
+          setError(`Error: ${response.error}`);
+        } else if (response.status === 'processing') {
+          setAidenStatus('thinking');
         }
       });
     });
@@ -93,10 +132,58 @@ function App() {
             data={questionData}
             isLoading={isLoading}
           />
+          
+          {aidenStatus === 'idle' && (
+            <div className="status-container">
+              <button 
+                onClick={handleTriggerAiden}
+                disabled={isLoading}
+                className="action-button"
+              >
+                Generate AIDEN Response
+              </button>
+            </div>
+          )}
+          
+          {aidenStatus === 'requesting' && (
+            <div className="status-container status-requesting">
+              <div className="spinner"></div>
+              <p>Requesting AIDEN response...</p>
+            </div>
+          )}
+          
+          {aidenStatus === 'thinking' && (
+            <div className="status-container status-thinking">
+              <div className="spinner"></div>
+              <p>AIDEN is thinking...</p>
+            </div>
+          )}
+          
+          {aidenStatus === 'ready' && (
+            <div className="status-container status-ready">
+              <div className="success-icon">✓</div>
+              <p>AIDEN response has been generated!</p>
+              <button 
+                onClick={() => {
+                  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                      action: "insertAidenResponse",
+                      postId: questionData.postId
+                    });
+                  });
+                }}
+                className="action-button insert-button"
+              >
+                Insert Response
+              </button>
+            </div>
+          )}
+          
           <QuestionEditComponent
             data={questionData}
             onGetResponse={handleGetResponse}
             isLoading={isLoading}
+            aidenStatus={aidenStatus}
           />
         </>
       ) : (

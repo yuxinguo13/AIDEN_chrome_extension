@@ -7,9 +7,27 @@ const OBSERVER_CONFIG = {
 };
 
 const BACKEND_URL = 'http://localhost:3000';
+const AUTO_REQUEST_DELAY = 1500; // Delay in ms before auto-requesting (to ensure page is fully loaded)
 
 console.log('[AIDEN] Content script successfully injected into:', window.location.href);
 console.log('[AIDEN] Document readyState:', document.readyState);
+
+// Store processed post IDs to avoid duplicate requests
+const processedPosts = new Set();
+// Track current status by post ID
+const postStatus = new Map();
+
+function updateAidenStatus(postId, status) {
+  // Update local tracking
+  postStatus.set(postId, status);
+  
+  // Send status update to extension popup if it's open
+  chrome.runtime.sendMessage({
+    action: "aidenStatusUpdate",
+    postId: postId,
+    status: status
+  });
+}
 
 function extractQuestionData() {
   console.log('[AIDEN] Extracting question data...');
@@ -82,51 +100,6 @@ function extractQuestionData() {
   }
 }
 
-function showLoadingState(button) {
-  button.disabled = true;
-  button.innerHTML = '<i class="icon-spinner icon-spin"></i> Processing...';
-  return button;
-}
-
-function updateButtonState(button, state) {
-  if (state === 'waiting') {
-    button.innerHTML = '<i class="icon-time"></i> Waiting for response...';
-  } else if (state === 'ready') {
-    button.disabled = false;
-    button.innerHTML = '<i class="icon-bolt"></i> Get AIDEN Response';
-  } else if (state === 'error') {
-    button.disabled = false;
-    button.innerHTML = '<i class="icon-warning-sign"></i> Error - Try Again';
-  }
-  return button;
-}
-
-async function checkResponseStatus(postId, maxAttempts = 20, delay = 3000) {
-  let attempts = 0;
-  
-  while (attempts < maxAttempts) {
-    try {
-      const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
-      const data = await response.json();
-      
-      if (response.status === 200 && data.status !== 'processing') {
-        return data;
-      }
-      
-      // If still processing, wait and try again
-      await new Promise(resolve => setTimeout(resolve, delay));
-      attempts++;
-    } catch (error) {
-      console.error('[AIDEN] Error checking response status:', error);
-      attempts++;
-      // Wait a bit longer on error
-      await new Promise(resolve => setTimeout(resolve, delay * 2));
-    }
-  }
-  
-  throw new Error('Timed out waiting for AIDEN response');
-}
-
 function addAidenButton(container) {
   // Find the container if not provided
   const controls = container || document.querySelector('.post-actions, .post_action_bar, .action-bar');
@@ -152,57 +125,125 @@ function addAidenButton(container) {
   button.style.cursor = 'pointer';
   
   button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.innerHTML = '<i class="icon-spinner icon-spin"></i> Processing...';
+    
     try {
-      // Get question data
       const questionData = extractQuestionData();
       if (!questionData) {
         throw new Error('Could not extract question data');
       }
-      
-      // Show loading state
-      showLoadingState(button);
-      
-      // Start the request
-      const response = await fetch(`${BACKEND_URL}/generate_response`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Extension-Version': chrome.runtime.getManifest().version
-        },
-        body: JSON.stringify({
-          post_id: questionData.postId,
-          llm_input: `Title: ${questionData.title}\nTags: ${questionData.tags.join(', ')}\nContent: ${questionData.content}`,
-          metadata: {
-            tags: questionData.tags,
-            url: questionData.url
-          }
-        })
-      });
-      
-      // Parse the initial response
-      const initialData = await response.json();
-      
-      // Show waiting state
-      updateButtonState(button, 'waiting');
-      
-      // Poll for results
-      const aidenResponse = await checkResponseStatus(questionData.postId);
-      
-      // Update button to normal state
-      updateButtonState(button, 'ready');
-      
-      // Insert response to instructor answer
-      insertAidenToInstructorAnswer(aidenResponse);
+
+      requestAidenResponse(questionData, button);
     } catch (error) {
-      console.error('[AIDEN] Error:', error);
+      console.error('AIDEN Error:', error);
       alert(`AIDEN Error: ${error.message}`);
-      
-      // Reset button to error state
-      updateButtonState(button, 'error');
+      button.disabled = false;
+      button.innerHTML = '<i class="icon-bolt"></i> Get AIDEN Response';
     }
   });
   
   controls.appendChild(button);
+  return button;
+}
+
+async function requestAidenResponse(questionData, buttonElement = null) {
+  try {
+    // Update status
+    updateAidenStatus(questionData.postId, 'requesting');
+    
+    // Send request to backend
+    const response = await fetch(`${BACKEND_URL}/generate_response`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Extension-Version': chrome.runtime.getManifest().version
+      },
+      body: JSON.stringify({
+        post_id: questionData.postId,
+        llm_input: `Title: ${questionData.title}\nTags: ${questionData.tags.join(', ')}\nContent: ${questionData.content}`,
+        metadata: {
+          tags: questionData.tags,
+          url: questionData.url
+        }
+      })
+    });
+    
+    // Parse initial response
+    const initialData = await response.json();
+    
+    // Start polling
+    updateAidenStatus(questionData.postId, 'thinking');
+    
+    // Start polling for results
+    pollForResults(questionData.postId, buttonElement);
+    
+    return initialData;
+  } catch (error) {
+    console.error('[AIDEN] Error requesting response:', error);
+    updateAidenStatus(questionData.postId, 'error');
+    
+    if (buttonElement) {
+      buttonElement.disabled = false;
+      buttonElement.innerHTML = '<i class="icon-warning-sign"></i> Error - Try Again';
+    }
+    
+    throw error;
+  }
+}
+
+async function pollForResults(postId, buttonElement = null, maxAttempts = 20, delay = 3000) {
+  let attempts = 0;
+  
+  const poll = async () => {
+    if (attempts >= maxAttempts) {
+      const errorMsg = "Timed out waiting for AIDEN response";
+      console.error(errorMsg);
+      updateAidenStatus(postId, 'error');
+      
+      if (buttonElement) {
+        buttonElement.disabled = false;
+        buttonElement.innerHTML = '<i class="icon-warning-sign"></i> Timeout - Try Again';
+      }
+      
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+      const data = await response.json();
+      
+      if (response.status === 200 && data.status !== 'processing') {
+        console.log("Complete response from AIDEN:", data);
+        updateAidenStatus(postId, 'ready');
+        
+        if (buttonElement) {
+          buttonElement.disabled = false;
+          buttonElement.innerHTML = '<i class="icon-ok"></i> Response Ready';
+        }
+        
+        // Store the response in localStorage for later use
+        try {
+          localStorage.setItem(`aiden_response_${postId}`, JSON.stringify(data));
+        } catch (e) {
+          console.warn('[AIDEN] Failed to store response in localStorage:', e);
+        }
+        
+        return data;
+      }
+      
+      // If still processing, increment attempts and try again
+      attempts++;
+      setTimeout(poll, delay);
+    } catch (error) {
+      console.error('[AIDEN] Error polling for results:', error);
+      attempts++;
+      setTimeout(poll, delay * 2); // Wait a bit longer on error
+    }
+  };
+  
+  // Start polling
+  setTimeout(poll, delay);
 }
 
 function insertAidenToInstructorAnswer(response) {
@@ -231,10 +272,10 @@ function insertAidenToInstructorAnswer(response) {
       aidenResponse = "Error: Could not retrieve AIDEN response";
     }
     
-    // Format the response
+    // Set the new content - just use the AIDEN response without the prefix
     const formattedResponse = existingContent.trim() ? 
-      existingContent + '\n\n' + aidenResponse :
-      aidenResponse;
+      existingContent + '\n\n' + aidenResponse : // Add two newlines if there's existing content
+      aidenResponse; // Just use the response if the textarea is empty
     
     // Set the new content
     instructorTextarea.value = formattedResponse;
@@ -257,10 +298,42 @@ function insertAidenToInstructorAnswer(response) {
   }
 }
 
-// Add message listener for communication with popup
+async function getStoredAidenResponse(postId) {
+  // First check localStorage
+  try {
+    const storedResponse = localStorage.getItem(`aiden_response_${postId}`);
+    if (storedResponse) {
+      return JSON.parse(storedResponse);
+    }
+  } catch (e) {
+    console.warn('[AIDEN] Error retrieving from localStorage:', e);
+  }
+  
+  // If not in localStorage, check backend
+  try {
+    const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+    if (response.status === 200) {
+      const data = await response.json();
+      if (data.status !== 'processing' && !data.error) {
+        return data;
+      }
+    }
+  } catch (e) {
+    console.error('[AIDEN] Error retrieving from backend:', e);
+  }
+  
+  return null;
+}
+
+// Add message listener for communication with popup and background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getQuestionData") {
     const data = extractQuestionData();
+    if (data) {
+      // Check and send current status
+      const status = postStatus.get(data.postId) || 'idle';
+      data.aidenStatus = status;
+    }
     sendResponse(data);
     return true;
   }
@@ -271,7 +344,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   
-  return false;
+  if (request.action === "insertAidenResponse") {
+    getStoredAidenResponse(request.postId)
+      .then(response => {
+        if (response) {
+          insertAidenToInstructorAnswer(response);
+          sendResponse({success: true});
+        } else {
+          sendResponse({success: false, error: 'No response available'});
+        }
+      })
+      .catch(error => {
+        console.error('[AIDEN] Error getting stored response:', error);
+        sendResponse({success: false, error: error.message});
+      });
+    return true;
+  }
+  
+  if (request.action === "triggerAidenRequest") {
+    const questionData = extractQuestionData();
+    if (questionData) {
+      requestAidenResponse(questionData)
+        .then(() => sendResponse({success: true}))
+        .catch(error => sendResponse({success: false, error: error.message}));
+      return true;
+    } else {
+      sendResponse({success: false, error: 'Could not extract question data'});
+      return true;
+    }
+  }
+  
+  if (request.action === "getAidenStatus") {
+    const questionData = extractQuestionData();
+    if (questionData) {
+      const status = postStatus.get(questionData.postId) || 'idle';
+      sendResponse({status: status});
+    } else {
+      sendResponse({status: 'error', error: 'Could not extract question data'});
+    }
+    return true;
+  }
 });
 
 // MutationObserver to handle dynamic content loading
