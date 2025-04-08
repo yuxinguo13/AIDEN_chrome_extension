@@ -37,11 +37,22 @@ function extractQuestionData() {
       tempDiv.innerHTML = contentElement.innerHTML;
       
       // Remove unwanted elements but preserve structure
-      tempDiv.querySelectorAll('a, img, script, style, iframe, button, .latex').forEach(el => el.remove());
+      tempDiv.querySelectorAll('a, img, script, style, iframe, button').forEach(el => {
+        // Keep LaTeX elements but remove others
+        if (!el.classList.contains('latex')) {
+          el.remove();
+        }
+      });
       
       // Get clean text with preserved line breaks
       content = tempDiv.innerText
         .replace(/\s+/g, ' ')
+        .trim();
+        
+      // Additional cleanup for better readability
+      content = content
+        .replace(/\\n/g, '\n')  // Convert escaped newlines
+        .replace(/\s{2,}/g, ' ') // Remove multiple spaces
         .trim();
     }
 
