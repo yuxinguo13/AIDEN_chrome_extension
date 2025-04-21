@@ -1,138 +1,127 @@
-// Handle cookie storage and communication with AIDEN backend
+// Handle communication with AIDEN backend
 const BACKEND_URL = 'http://localhost:3000';
+
+// Track response status for posts
+const responseStatusCache = new Map();
 
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "getResponse") {
+    fetchAidenResponse(request.postId, sender, sendResponse);
+    return true;
+  }
+
+  if (request.action === "checkStatus") {
+    checkResponseStatus(request.postId, sendResponse);
+    return true;
+  }
+
+  if (request.action === "submitResponse") {
+    submitResponseToPiazza(request.postId, request.content, sendResponse);
+    return true;
+  }
+
   if (request.action === "getCookies") {
-    chrome.cookies.getAll({ domain: "piazza.com" }, (cookies) => {
-      if (chrome.runtime.lastError) {
-        sendResponse({ error: chrome.runtime.lastError.message });
-        return;
-      }
-      const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      sendResponse({ cookies: cookieString });
-    });
+    sendResponse({ cookies: true });
+    return true;
+  }
+
+  if (request.action === "proxyFetch") {
+    const url = `${BACKEND_URL}${request.endpoint}`;
+    fetch(url, { method: request.method || "GET" })
+      .then(res => res.json())
+      .then(data => sendResponse(data))
+      .catch(error => {
+        console.error("Proxy fetch failed:", error);
+        sendResponse({ error: error.message });
+      });
     return true; // Required for async response
   }
   
-  if (request.action === "sendToAiden") {
-    handleAidenRequest(request, sender, sendResponse);
-    return true; // Required for async response
+
+  if (request.action === "triggerGeneration") {
+    fetch(`${BACKEND_URL}/generate_response`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request.payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log("[AIDEN] Triggered generation from background:", data);
+        sendResponse(data);
+      })
+      .catch(err => {
+        console.error("[AIDEN] Generation trigger failed:", err);
+        sendResponse({ status: 'error', message: err.message });
+      });
+    return true;
   }
 });
 
-async function handleAidenRequest(request, sender, sendResponse) {
+async function fetchAidenResponse(postId, sender, sendResponse) {
   try {
-    // Get extension version for logging
-    const manifestData = chrome.runtime.getManifest();
-    const extensionVersion = manifestData.version;
-    
-    // Get user agent for logging
-    const userAgent = navigator.userAgent;
-    
-    // Make initial request to the backend
-    const response = await fetch(`${BACKEND_URL}/generate_response`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Extension-Version': extensionVersion,
-        'User-Agent': userAgent
-      },
-      body: JSON.stringify({
-        ...request.data,
-        url: sender.tab?.url // Include the URL for context
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const initialData = await response.json();
-    console.log("Initial response from AIDEN:", initialData);
-
-    // Check if processing is needed
-    if (initialData.status === 'processing') {
-      sendResponse({ status: 'processing', message: 'Processing your request...' });
-      
-      // Start polling for the final result
-      pollForResults(request.data.post_id, sender, sendResponse);
-    } else {
-      // If we got an immediate response
-      console.log("Complete response from AIDEN:", initialData);
-      notifyContentScript(sender, initialData);
-      sendResponse(initialData);
-    }
-  } catch (error) {
-    console.error('Error sending to AIDEN:', error);
-    
-    // Send error message to content script
-    if (sender.tab && sender.tab.id) {
-      chrome.tabs.sendMessage(sender.tab.id, {
-        action: "aidenResponseError", 
-        error: error.message
-      });
-    }
-    
-    sendResponse({ error: error.message });
-  }
-}
-
-async function pollForResults(postId, sender, sendResponse, maxAttempts = 20) {
-  let attempts = 0;
-  const delay = 3000; // 3 seconds between polls
-  
-  const poll = async () => {
-    if (attempts >= maxAttempts) {
-      const errorMsg = "Timed out waiting for AIDEN response";
-      console.error(errorMsg);
-      
+    const cachedStatus = responseStatusCache.get(postId);
+    if (cachedStatus === 'ready') {
+      const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const data = await response.json();
+      responseStatusCache.set(postId, data.status);
+      sendResponse(data);
       if (sender.tab && sender.tab.id) {
-        chrome.tabs.sendMessage(sender.tab.id, {
-          action: "aidenResponseError", 
-          error: errorMsg
-        });
+        chrome.tabs.sendMessage(sender.tab.id, { action: "responseReady", data });
       }
-      
       return;
     }
-    
-    try {
-      const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
-      const data = await response.json();
-      
-      if (response.status === 200 && data.status !== 'processing') {
-        console.log("Complete response from AIDEN:", data);
-        notifyContentScript(sender, data);
-        return;
-      }
-      
-      // If still processing, increment attempts and try again
-      attempts++;
-      setTimeout(poll, delay);
-    } catch (error) {
-      console.error('Error polling for results:', error);
-      attempts++;
-      setTimeout(poll, delay * 2); // Wait a bit longer on error
+
+    const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+    const data = await response.json();
+    responseStatusCache.set(postId, data.status);
+    sendResponse(data);
+    if (data.status === 'ready' && sender.tab && sender.tab.id) {
+      chrome.tabs.sendMessage(sender.tab.id, { action: "responseReady", data });
     }
-  };
-  
-  // Start polling
-  setTimeout(poll, delay);
+  } catch (error) {
+    console.error('Error fetching AIDEN response:', error);
+    sendResponse({ status: 'error', message: error.message });
+    if (sender.tab && sender.tab.id) {
+      chrome.tabs.sendMessage(sender.tab.id, { action: "responseError", error: error.message });
+    }
+  }
 }
 
-function notifyContentScript(sender, data) {
-  if (sender.tab && sender.tab.id) {
-    chrome.tabs.sendMessage(sender.tab.id, {
-      action: "aidenResponseReady", 
-      response: data
+async function checkResponseStatus(postId, sendResponse) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/get_response/${postId}`);
+    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+    const data = await response.json();
+    responseStatusCache.set(postId, data.status);
+    sendResponse({ status: data.status, data });
+  } catch (error) {
+    console.error('Error checking response status:', error);
+    sendResponse({ status: 'error', message: error.message });
+  }
+}
+
+async function submitResponseToPiazza(postId, content, sendResponse) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/posts/${postId}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
     });
+
+    if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+    const data = await response.json();
+    responseStatusCache.set(postId, 'answered');
+    sendResponse({ status: 'success', data });
+  } catch (error) {
+    console.error('Error submitting response:', error);
+    sendResponse({ status: 'error', message: error.message });
   }
 }
 
-// Add error handling for extension installation
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    console.log('AIDEN extension installed');
-  }
-});
+// Clear cache every 5 minutes
+setInterval(() => {
+  responseStatusCache.clear();
+}, 5 * 60 * 1000);
