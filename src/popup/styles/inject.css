@@ -1,74 +1,87 @@
-/* Styles for the injected React components in Piazza */
-#aiden-react-root {
-    position: fixed;
-    top: 0;
-    right: 0;
-    z-index: 9999;
-    width: 100%;
-    max-width: 500px;
-    height: 100vh;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  
-  .response-modal {
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    width: 90%;
-    max-width: 500px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  }
-  
-  .response-modal h3 {
-    margin-top: 0;
-    color: #2c3e50;
-  }
-  
-  .response-textarea {
-    width: 100%;
-    height: 300px;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    resize: vertical;
-    font-family: inherit;
-    font-size: 14px;
-  }
-  
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 15px;
-  }
-  
-  .submit-button {
-    padding: 8px 16px;
-    background-color: #27ae60;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  
-  .cancel-button {
-    padding: 8px 16px;
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  
-  #aiden-button {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  
-  #aiden-button i {
-    font-style: normal;
-  }
+#aiden-button {
+  margin-left: 10px !important;
+  cursor: pointer !important;
+}
+
+.aiden-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.aiden-modal-content {
+  background-color: white;
+  width: 80%;
+  max-width: 800px;
+  max-height: 80vh;
+  border-radius: 5px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.aiden-modal-header {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.aiden-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.aiden-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #aaa;
+}
+
+.aiden-modal-close:hover {
+  color: #555;
+}
+
+.aiden-modal-body {
+  padding: 15px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.aiden-modal-body pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.aiden-modal-footer {
+  padding: 15px;
+  border-top: 1px solid #eee;
+  text-align: right;
+}
+
+.aiden-modal-close-btn {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.aiden-modal-close-btn:hover {
+  background-color: #d32f2f;
+}
