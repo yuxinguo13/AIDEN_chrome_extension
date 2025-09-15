@@ -13,7 +13,8 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "cookies"
   ],
   "host_permissions": [
     "https://piazza.com/*",
@@ -30,7 +31,7 @@
   }],
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "popup.html", "inject.css"],
+      "resources": ["icons/*", "inject.css"],
       "matches": ["https://piazza.com/*"]
     }
   ],

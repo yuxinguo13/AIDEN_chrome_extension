@@ -22,8 +22,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "getCookies") {
-    sendResponse({ cookies: true });
-    return true;
+    chrome.cookies.get({ url: "https://piazza.com", name: "session_id" }, (cookie) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ cookies: false, error: chrome.runtime.lastError.message });
+      } else {
+        sendResponse({ cookies: !!cookie });
+      }
+    });
+    return true; 
   }
 
   if (request.action === "proxyFetch") {
@@ -35,10 +41,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error("Proxy fetch failed:", error);
         sendResponse({ error: error.message });
       });
-    return true; // Required for async response
+    return true;
   }
   
-
   if (request.action === "triggerGeneration") {
     fetch(`${BACKEND_URL}/generate_response`, {
       method: "POST",
@@ -54,6 +59,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error("[AIDEN] Generation trigger failed:", err);
         sendResponse({ status: 'error', message: err.message });
       });
+    return true;
+  }
+
+  // Updated handler for submitting ratings AND the final answer
+  if (request.action === "submitRating") {
+    fetch(`${BACKEND_URL}/submit_rating`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // The payload from content.js now contains everything you need
+      body: JSON.stringify(request.payload) 
+    })
+    .then(res => {
+      if (res.ok) {
+        sendResponse({ success: true });
+      } else {
+        sendResponse({ success: false });
+      }
+    })
+    .catch(err => {
+      console.error("[AIDEN] Rating submission failed:", err);
+      sendResponse({ success: false, error: err.message });
+    });
     return true;
   }
 });

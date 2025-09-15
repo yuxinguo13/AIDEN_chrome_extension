@@ -5,14 +5,14 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 module.exports = {
   mode: 'production',
   entry: {
-    popup: path.join(__dirname, "src/popup/main.jsx"),
-    content: path.join(__dirname, "src/content.js"),
-    background: path.join(__dirname, "src/background.js")
+    popup: path.resolve(__dirname, 'src', 'popup', 'main.jsx'),
+    background: path.resolve(__dirname, 'src', 'background.js'),
+    content: path.resolve(__dirname, 'src', 'content.js'),
   },
   output: {
-    path: path.join(__dirname, "dist"),
-    filename: "[name].js",
-    clean: true
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].js',
+    clean: true, 
   },
   module: {
     rules: [
@@ -20,58 +20,34 @@ module.exports = {
         test: /\.(js|jsx)$/,
         exclude: /node_modules/,
         use: {
-          loader: "babel-loader",
-          loader: "babel-loader",
+          loader: 'babel-loader',
           options: {
-            presets: [
-              "@babel/preset-env",
-              ["@babel/preset-react", {"runtime": "automatic"}]
-            ],
-            plugins: [
-              "@babel/plugin-transform-runtime"
-            ]
-          }
-        }
+            presets: ['@babel/preset-env', ['@babel/preset-react', { 'runtime': 'automatic' }]],
+          },
+        },
       },
       {
         test: /\.css$/,
-        use: ["style-loader", "css-loader"],
-        exclude: /node_modules/,
-        use: ["style-loader", "css-loader"],
-        exclude: /node_modules/
-      }
-    ]
+        use: ['style-loader', 'css-loader'],
+      },
+    ],
   },
   resolve: {
-    extensions: [".js", ".jsx"]
-  },
-  resolve: {
-    extensions: [".js", ".jsx"]
+    extensions: ['.js', '.jsx'],
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: path.join(__dirname, "src/popup/index.html"),
-      filename: "popup.html",
-      chunks: ["popup"],
-      inject: 'body'
+      template: path.resolve(__dirname, 'src', 'popup', 'index.html'),
+      filename: 'popup.html',
+      chunks: ['popup'],
     }),
     new CopyWebpackPlugin({
       patterns: [
-        {
-          from: "src/manifest.json",
-          to: "."
-        },
-        { 
-          from: "src/public/icons",
-          to: "icons"
-        },
-        {
-          from: "src/popup/styles/inject.css", 
-          to: "inject.css"
-        }
-      ]
-    })
+        { from: 'src/manifest.json', to: 'manifest.json' },
+        { from: 'src/public/icons', to: 'icons' },
+        { from: 'src/popup/styles/inject.css', to: 'inject.css' },
+      ],
+    }),
   ],
-  // Add this to fix source mapping
-  devtool: 'cheap-module-source-map'
+  devtool: 'cheap-module-source-map',
 };
