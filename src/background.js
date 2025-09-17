@@ -67,16 +67,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     fetch(`${BACKEND_URL}/submit_rating`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // The payload from content.js now contains everything you need
       body: JSON.stringify(request.payload) 
     })
-    .then(res => {
-      if (res.ok) {
-        sendResponse({ success: true });
-      } else {
-        sendResponse({ success: false });
-      }
-    })
+    .then(res => res.json())
+    .then(data => sendResponse({ success: true, response: data }))
     .catch(err => {
       console.error("[AIDEN] Rating submission failed:", err);
       sendResponse({ success: false, error: err.message });
