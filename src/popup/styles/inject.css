@@ -40,8 +40,11 @@
 }
 
 .aiden-modal-body {
-  padding: 20px 25px;
+  padding: 30px 25px;
   text-align: center;
+  line-height: 1.5;
+  font-size: 16px;
+  color: #333;
 }
 
 .aiden-stars-container {
@@ -65,6 +68,38 @@
   border-top: 1px solid #eee;
   text-align: center;
 }
+
+.aiden-modal-footer-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.aiden-modal-btn {
+  padding: 10px 10px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.aiden-modal-btn-yes {
+  background-color: #27ae60;
+  color: white;
+}
+.aiden-modal-btn-yes:hover {
+  background-color: #219653;
+}
+
+.aiden-modal-btn-no {
+  background-color: #ecf0f1;
+  color: #34495e;
+}
+.aiden-modal-btn-no:hover {
+  background-color: #bdc3c7;
+}
+
 
 .aiden-modal-submit-btn {
   padding: 10px 20px;
